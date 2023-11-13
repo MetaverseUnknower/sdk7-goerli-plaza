@@ -27,16 +27,18 @@ export class WhitePianoKey {
   offColor: Color4
   note: number = 0
   isBlackKey: boolean = false
+  parent?: Entity
 
   constructor(position: Vector3, scale: Vector3, sound: string, note: number = 0, pitch: number, parent?: Entity) {
     this.whiteKeyEntity = engine.addEntity()
     this.note = note
+    this.parent = parent
     MeshRenderer.setPlane(this.whiteKeyEntity)
     Transform.create(this.whiteKeyEntity, {
       position: position,
       rotation: Quaternion.fromEulerDegrees(90, 0, 0),
       scale: scale,
-      parent: parent
+      parent: this.parent
     })
     this.offColor = Color4.White()
     this.onColor = Color4.Yellow()
@@ -55,7 +57,8 @@ export class WhitePianoKey {
       audioClipUrl: sound,
       loop: false,
       playing: false,
-      pitch: pitch
+      pitch: pitch,
+      isBlackKey: false
     } as CustomPBAudioSource)
 
     whiteKeys.push(this)
@@ -78,37 +81,41 @@ export class WhitePianoKey {
     Material.setPbrMaterial(this.whiteKeyEntity, {
       albedoColor: this.offColor,
       emissiveColor: this.offColor,
-      emissiveIntensity: 0,
+      emissiveIntensity: 2,
       specularIntensity: 1,
       roughness: 0.5,
       metallic: 0.2
     })
   }
 
-  createWhiteKeyTrigger(triggerPosition: Vector3, scale: Vector3, sound: string): void {
-    triggerPosition = Vector3.create(0, -0.9, -1)
-    scale = Vector3.create(0.25, 4, 2)
+  createWhiteKeyTrigger(triggerPosition: Vector3, triggerScale: Vector3, sound: string): void {
+    const { position, scale } = Transform.get(this.whiteKeyEntity)
+
+    triggerPosition = Vector3.create(0, position.y - (scale.y / 3), position.z)
+    triggerScale = Vector3.create(0.5, scale.z, scale.y / 3.5)
 
     utils.triggers.addTrigger(
       this.whiteKeyEntity,
-      WHITE_LAYER,
+      BLACK_LAYER,
       PLAYER_LAYER,
       [
         {
           type: 'box',
           position: triggerPosition,
-          scale: scale
+          scale: triggerScale
         }
       ],
       // on camera enter
       () => {
         console.log('enter white key trigger: ', sound)
+
         AudioSource.getMutable(this.whiteKeyEntity).playing = true
         AudioSource.getMutable(this.whiteKeyEntity).loop = false
         sceneMessageBus.emit('noteOn', { note: this.note })
       },
       // on camera exit
       () => {
+        console.log('exit white key trigger: ', sound)
         sceneMessageBus.emit('noteOff', { note: this.note })
       },
       Color4.Blue() // debug
@@ -151,7 +158,8 @@ export class BlackPianoKey {
       audioClipUrl: sound,
       loop: false,
       playing: false,
-      pitch: pitch
+      pitch: pitch,
+      isBlackKey: true
     } as CustomPBAudioSource)
 
     blackKeys.push(this)
@@ -181,14 +189,12 @@ export class BlackPianoKey {
     })
   }
 
-  createBlackKeyTrigger(triggerPosition: Vector3, scale: Vector3, sound: string): void {
-    console.log('Entity Transform:', {
-      position: Transform.get(this.blackKeyEntity).position,
-      rotation: Transform.get(this.blackKeyEntity).rotation,
-      parent: Transform.get(this.blackKeyEntity).parent
-    })
-    triggerPosition = Vector3.create(0, 0, -1)
-    scale = Vector3.create(0.25, 4, 1.5)
+  createBlackKeyTrigger(triggerPosition: Vector3, triggerScale: Vector3, sound: string): void {
+    const { position, scale } = Transform.get(this.blackKeyEntity)
+
+    triggerPosition = Vector3.create(0, 0, position.y)
+    triggerScale = Vector3.create(0.5, 0.5, scale.y)
+
     utils.triggers.addTrigger(
       this.blackKeyEntity,
       BLACK_LAYER,
@@ -197,7 +203,7 @@ export class BlackPianoKey {
         {
           type: 'box',
           position: triggerPosition,
-          scale: scale
+          scale: triggerScale
         }
       ],
       // on camera enter
@@ -259,5 +265,5 @@ sceneMessageBus.on('noteOff', (e) => {
 })
 
 function calculatePitch(note: number): number {
-  return 2 ** ((note - AudioController.calculatePitch('c4')) / 12)
+  return (note - AudioController.calculatePitch('c4'))
 }

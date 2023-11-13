@@ -44,17 +44,18 @@ export function main() {
 
   let whiteKeyXPos = -5.55
   const audioController = new AudioController()
-  const transpose = -4 // transpose in semitones
-  const n = [0, 2, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16]
+  const transpose = 0 // transpose in semitones
+  const whiteKeyPitches = [-12, -10, -8, -7, -5, -3, -1, 0, 2, 4, 5, 7, 9, 11]
+  const blackKeyPitches = [-9, -7, -4, -2, 0, 3, 5, 8, 10, 12];
 
   function createWhiteKeys() {
     for (let i = 0; i < whiteKeySounds.length; i++) {
       new WhitePianoKey(
         Vector3.create(whiteKeyXPos, 0.11, 0),
-        Vector3.create(0.7, 4, 0.5),
+        Vector3.create(0.7, 5, 0.5),
         whiteKeySounds[i],
         i,
-        Math.pow(2, (n[i] + transpose) / 12),
+        Math.pow(2, (whiteKeyPitches[i] + transpose) / 12),
         scene
       )
       audioController.createAudioEntity(`whiteKeys.${notes[i]}`, false)
@@ -82,11 +83,11 @@ export function main() {
   function createBlackKeys() {
     for (let i = 0; i < blackKeySounds.length; i++) {
       new BlackPianoKey(
-        Vector3.create(blackKeyXPos, 0.12, 1.1),
-        Vector3.create(0.5, 1.8, 10),
+        Vector3.create(blackKeyXPos, 0.12, 1),
+        Vector3.create(0.5, 3, 10),
         blackKeySounds[i],
         i,
-        Math.pow(2, (n[i] + transpose) / 12),
+        Math.pow(2, (blackKeyPitches[i] + transpose) / 12),
         scene
       )
       audioController.createAudioEntity(`blackKeys.${notes[i]}`, true)
@@ -98,7 +99,7 @@ export function main() {
 
   createWhiteKeys()
   createBlackKeys()
-  //utils.triggers.enableDebugDraw(true); // To debug trigger areas
+  // utils.triggers.enableDebugDraw(true); // To debug trigger areas
 
   // UI with GitHub link
   setupUi()
