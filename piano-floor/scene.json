@@ -16,9 +16,10 @@
   "tags": [],
   "scene": {
     "parcels": [
-      "84,1"
+      "0,0",
+      "1,0"
     ],
-    "base": "84,1"
+    "base": "0,0"
   },
   "spawnPoints": [
     {

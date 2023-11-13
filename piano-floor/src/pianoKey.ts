@@ -1,15 +1,12 @@
 import * as utils from '@dcl-sdk/utils'
-import { MessageBus } from '@dcl/sdk/message-bus'
 import { AudioSource, Entity, Material, MeshRenderer, Transform, engine, PBAudioSource } from '@dcl/sdk/ecs'
-import { Color4, Quaternion, Vector3 } from '@dcl/sdk/math'
-import resources from './resources'
+import { Color4, Vector3 } from '@dcl/sdk/math'
 import { AudioController } from './audioController'
+import { getUserId } from './userData'
+import { sceneMessageBus } from './sceneBus'
 
-export const sceneMessageBus = new MessageBus()
 export const whiteKeys: WhitePianoKey[] = []
 export const blackKeys: BlackPianoKey[] = []
-export const referenceWhiteKeySound = resources.sounds.whiteKeys.c4
-export const referenceBlackKeySound = resources.sounds.blackKeys.aSharp3
 const playerEntity: Entity = engine.PlayerEntity
 
 const BLACK_LAYER = utils.LAYER_2
@@ -18,39 +15,39 @@ const PLAYER_LAYER = utils.triggers.getLayerMask(playerEntity)
 utils.triggers.setTriggeredByMask(playerEntity, 2 || 3)
 
 interface CustomPBAudioSource extends PBAudioSource {
-  isBlackKey: boolean
+  isBlackKey?: boolean
 }
 
 export class WhitePianoKey {
   public whiteKeyEntity: Entity
+  public audioEntity: Entity
   onColor: Color4
   offColor: Color4
   note: number = 0
   isBlackKey: boolean = false
   parent?: Entity
+  pressed: boolean = false
+  sound: string;
+  pitch: number;
+  public playersPressing: string[] = []
 
-  constructor(position: Vector3, scale: Vector3, sound: string, note: number = 0, pitch: number, parent?: Entity) {
+  constructor(position: Vector3, scale: Vector3, sound: string, note: number = 0, pitch: number) {
     this.whiteKeyEntity = engine.addEntity()
+    this.audioEntity = AudioController.createAudioEntity(sound, pitch);
+    this.sound = sound
+    this.pitch = pitch
     this.note = note
-    this.parent = parent
-    MeshRenderer.setPlane(this.whiteKeyEntity)
-    Transform.create(this.whiteKeyEntity, {
-      position: position,
-      rotation: Quaternion.fromEulerDegrees(90, 0, 0),
-      scale: scale,
-      parent: this.parent
-    })
     this.offColor = Color4.White()
     this.onColor = Color4.Yellow()
-    this.createWhiteKeyTrigger(position, scale, sound)
 
-    Material.setPbrMaterial(this.whiteKeyEntity, {
-      albedoColor: this.offColor,
-      emissiveColor: this.offColor,
-      emissiveIntensity: 2,
-      specularIntensity: 1,
-      roughness: 0.5,
-      metallic: 0.2
+    MeshRenderer.setBox(this.whiteKeyEntity)
+    Transform.create(this.whiteKeyEntity, {
+      position: position,
+      scale: scale,
+    })
+    Transform.create(this.audioEntity, {
+      position: position,
+      scale: scale,
     })
 
     AudioSource.create(this.whiteKeyEntity, {
@@ -61,42 +58,67 @@ export class WhitePianoKey {
       isBlackKey: false
     } as CustomPBAudioSource)
 
+    this.createWhiteKeyTrigger(position, scale, this.audioEntity)
+
+    Material.setPbrMaterial(this.whiteKeyEntity, {
+      albedoColor: this.playersPressing.length > 0 ? this.onColor : this.offColor,
+      emissiveColor: this.playersPressing.length > 0 ? this.onColor : this.offColor,
+      emissiveIntensity: 1,
+      specularIntensity: 1,
+      roughness: 0.5,
+      metallic: 0.2
+    })
     whiteKeys.push(this)
   }
 
-  play(): void {
-    AudioSource.getMutable(this.whiteKeyEntity).playing = true
-    AudioSource.getMutable(this.whiteKeyEntity).loop = false
+  play: CallableFunction = (userId?: string): void => {
+    if (userId && !this.playersPressing.includes(userId)) {
+      this.playersPressing.push(userId)
+    }
+    console.log('players pressing this key: ', this.pressed, this.playersPressing)
+    AudioSource.getMutable(this.audioEntity).playing = true
+    if (this.pressed) return;
+    this.pressed = true
     Material.setPbrMaterial(this.whiteKeyEntity, {
       albedoColor: this.onColor,
       emissiveColor: this.onColor,
-      emissiveIntensity: 2,
+      emissiveIntensity: 1,
       specularIntensity: 1,
       roughness: 0.5,
       metallic: 0.2
     })
+    const entityTransform = Transform.getMutable(this.whiteKeyEntity);
+    entityTransform.position.y -= entityTransform.scale.y;
   }
 
-  end(): void {
+  end: CallableFunction = (userId?: string): void => {
+    if (userId) {
+      this.playersPressing = this.playersPressing.filter((id) => id !== userId)
+    }
+    AudioSource.getMutable(this.audioEntity).playing = false
+    if (!this.pressed || this.playersPressing.length > 0) return;
+    this.pressed = false
     Material.setPbrMaterial(this.whiteKeyEntity, {
       albedoColor: this.offColor,
       emissiveColor: this.offColor,
-      emissiveIntensity: 2,
+      emissiveIntensity: 1,
       specularIntensity: 1,
       roughness: 0.5,
       metallic: 0.2
     })
+    const entityTransform = Transform.getMutable(this.whiteKeyEntity)
+    entityTransform.position.y += entityTransform.scale.y
   }
 
-  createWhiteKeyTrigger(triggerPosition: Vector3, triggerScale: Vector3, sound: string): void {
+  createWhiteKeyTrigger(triggerPosition: Vector3, triggerScale: Vector3, audioEntity: Entity): void {
     const { position, scale } = Transform.get(this.whiteKeyEntity)
 
-    triggerPosition = Vector3.create(0, position.y - (scale.y / 3), position.z)
-    triggerScale = Vector3.create(0.5, scale.z, scale.y / 3.5)
+    triggerPosition = Vector3.create(0, 0.25, 0)
+    triggerScale = Vector3.create(scale.x, scale.y, scale.z)
 
     utils.triggers.addTrigger(
       this.whiteKeyEntity,
-      BLACK_LAYER,
+      WHITE_LAYER,
       PLAYER_LAYER,
       [
         {
@@ -106,17 +128,16 @@ export class WhitePianoKey {
         }
       ],
       // on camera enter
-      () => {
-        console.log('enter white key trigger: ', sound)
-
-        AudioSource.getMutable(this.whiteKeyEntity).playing = true
-        AudioSource.getMutable(this.whiteKeyEntity).loop = false
-        sceneMessageBus.emit('noteOn', { note: this.note })
+      async () => {
+        console.log('enter white key trigger: ')
+        const userId = await getUserId()
+        sceneMessageBus.emit('noteOn', { userId, note: this.note, keyEntity: this.whiteKeyEntity, audioEntity, position, scale })
       },
       // on camera exit
-      () => {
-        console.log('exit white key trigger: ', sound)
-        sceneMessageBus.emit('noteOff', { note: this.note })
+      async () => {
+        console.log('exit white key trigger: ')
+        const userId = await getUserId()
+        sceneMessageBus.emit('noteOff', { userId, note: this.note, keyEntity: this.whiteKeyEntity, audioEntity, position, scale })
       },
       Color4.Blue() // debug
     )
@@ -129,27 +150,34 @@ export class BlackPianoKey {
   offColor: Color4
   note: number = 0
   isBlackKey: Boolean = true
+  audioEntity: Entity
+  playersPressing: string[] = []
+  pressed: boolean = false
 
-  constructor(position: Vector3, scale: Vector3, sound: string, note: number = 0, pitch: number, parent?: Entity) {
+  constructor(position: Vector3, scale: Vector3, sound: string, note: number = 0, pitch: number) {
     this.blackKeyEntity = engine.addEntity()
+    this.audioEntity = AudioController.createAudioEntity(sound, pitch)
     this.note = note
     Transform.createOrReplace(this.blackKeyEntity, {
       position: position,
-      rotation: Quaternion.fromEulerDegrees(90, 0, 0),
       scale: scale,
-      parent: parent
+    })
+    Transform.create(this.audioEntity, {
+      position: position,
+      scale: scale,
     })
 
-    MeshRenderer.setPlane(this.blackKeyEntity)
+
+    MeshRenderer.setBox(this.blackKeyEntity)
     this.offColor = Color4.Black()
     this.onColor2 = Color4.Yellow()
-    this.createBlackKeyTrigger(position, scale, sound)
+    this.createBlackKeyTrigger(position, scale, this.audioEntity)
 
     Material.setPbrMaterial(this.blackKeyEntity, {
       albedoColor: this.offColor,
       emissiveColor: this.offColor,
-      emissiveIntensity: 2,
-      specularIntensity: 1,
+      emissiveIntensity: 0,
+      specularIntensity: 0,
       roughness: 0.5,
       metallic: 0.2
     })
@@ -165,9 +193,14 @@ export class BlackPianoKey {
     blackKeys.push(this)
   }
 
-  play(): void {
-    AudioSource.getMutable(this.blackKeyEntity).playing = true
-    AudioSource.getMutable(this.blackKeyEntity).loop = false
+  play: CallableFunction = (userId?: string): void => {
+    if (userId && !this.playersPressing.includes(userId)) {
+      this.playersPressing.push(userId)
+    }
+    console.log('players pressing this key: ', this.pressed, this.playersPressing)
+    AudioSource.getMutable(this.audioEntity).playing = true
+    if (this.pressed) return;
+    this.pressed = true
     Material.setPbrMaterial(this.blackKeyEntity, {
       albedoColor: this.onColor2,
       emissiveColor: this.onColor2,
@@ -176,24 +209,37 @@ export class BlackPianoKey {
       roughness: 0.5,
       metallic: 0.2
     })
+    const entityTransform = Transform.getMutable(this.blackKeyEntity);
+    entityTransform.position.y -= entityTransform.scale.y;
+
+    AudioSource.getMutable(this.audioEntity).playing = true
   }
 
-  end(): void {
+  end: CallableFunction = (userId?: string): void => {
+    if (userId) {
+      this.playersPressing = this.playersPressing.filter((id) => id !== userId)
+    }
+    if (!this.pressed || this.playersPressing.length > 0) return;
+    this.pressed = false
     Material.setPbrMaterial(this.blackKeyEntity, {
       albedoColor: this.offColor,
       emissiveColor: this.offColor,
-      emissiveIntensity: 0,
+      emissiveIntensity: 2,
       specularIntensity: 1,
       roughness: 0.5,
       metallic: 0.2
     })
+    const entityTransform = Transform.getMutable(this.blackKeyEntity)
+    entityTransform.position.y += entityTransform.scale.y
+
+    AudioSource.getMutable(this.audioEntity).playing = false
   }
 
-  createBlackKeyTrigger(triggerPosition: Vector3, triggerScale: Vector3, sound: string): void {
+  createBlackKeyTrigger(triggerPosition: Vector3, triggerScale: Vector3, audioEntity: Entity): void {
     const { position, scale } = Transform.get(this.blackKeyEntity)
 
-    triggerPosition = Vector3.create(0, 0, position.y)
-    triggerScale = Vector3.create(0.5, 0.5, scale.y)
+    triggerPosition = Vector3.create(0, 0.25, 0)
+    triggerScale = Vector3.create(scale.x, scale.y, scale.z)
 
     utils.triggers.addTrigger(
       this.blackKeyEntity,
@@ -207,63 +253,18 @@ export class BlackPianoKey {
         }
       ],
       // on camera enter
-      () => {
-        console.log('enter black key trigger: ', sound)
-        AudioSource.getMutable(this.blackKeyEntity).playing = true
-        AudioSource.getMutable(this.blackKeyEntity).loop = false
-        sceneMessageBus.emit('noteOn', { note: this.note, isBlackKey: true })
-        Material.setPbrMaterial(this.blackKeyEntity, {
-          albedoColor: this.onColor2,
-          emissiveColor: this.onColor2,
-          emissiveIntensity: 2,
-          specularIntensity: 1,
-          roughness: 0.5,
-          metallic: 0.2
-        })
+      async () => {
+        console.log('enter black key trigger: ')
+        const userId = await getUserId()
+        sceneMessageBus.emit('noteOn', { userId, note: this.note, keyEntity: this.blackKeyEntity, audioEntity, position, scale, isBlackKey: true })
       },
       // on camera exit
-      () => {
-        sceneMessageBus.emit('noteOff', { note: this.note })
-        Material.setPbrMaterial(this.blackKeyEntity, {
-          albedoColor: this.offColor,
-          emissiveColor: this.offColor,
-          emissiveIntensity: 0,
-          specularIntensity: 1,
-          roughness: 0.5,
-          metallic: 0.2
-        })
+      async () => {
+        console.log('exit black key trigger: ')
+        const userId = await getUserId()
+        sceneMessageBus.emit('noteOff', { userId, note: this.note, keyEntity: this.blackKeyEntity, audioEntity, position, scale, isBlackKey: true })
       },
       Color4.Red() // debug
     )
   }
-}
-
-sceneMessageBus.on('noteOn', (e) => {
-  if (e.isBlackKey) {
-    const blackKey = blackKeys[e.note]
-    if (blackKey) {
-      blackKey.play()
-    }
-  } else {
-    const whiteKey = whiteKeys[e.note]
-    if (whiteKey) {
-      whiteKey.play()
-    }
-  }
-})
-
-sceneMessageBus.on('noteOff', (e) => {
-  const whiteKey = whiteKeys[e.note]
-  if (whiteKey) {
-    whiteKey.end()
-  }
-
-  const blackKey = blackKeys[e.note]
-  if (blackKey) {
-    blackKey.end()
-  }
-})
-
-function calculatePitch(note: number): number {
-  return (note - AudioController.calculatePitch('c4'))
 }

@@ -1,106 +1,60 @@
-import { ColliderLayer, engine, GltfContainer, MeshCollider, Transform } from '@dcl/sdk/ecs'
-import { Quaternion, Vector3 } from '@dcl/sdk/math'
-import * as utils from '@dcl-sdk/utils'
+import { Color4, Quaternion, Vector3 } from '@dcl/sdk/math'
 import { BlackPianoKey, WhitePianoKey } from './pianoKey'
 import resources from './resources'
-import { AudioController } from './audioController'
-import { setupUi } from './ui'
+import { requestKeyStates, setUpEvents } from './sceneBus';
+import { Material, MeshRenderer, Transform, engine } from '@dcl/sdk/ecs';
+
+/*
+  Set up key positions and sizes in resources.ts
+*/
+
+function createWhiteKeys() {
+  resources.keys.white.forEach((key, index) => {
+    const { position, scale } = key
+    new WhitePianoKey(
+      Vector3.create(position.x, position.y, position.z),
+      Vector3.create(scale.x, scale.y, scale.z),
+      key.sound,
+      index,
+      key.pitch
+    )
+  })
+}
+
+function createBlackKeys() {
+  resources.keys.black.forEach((key, index) => {
+    const { position, scale } = key
+    new BlackPianoKey(
+      Vector3.create(position.x, position.y, position.z),
+      Vector3.create(scale.x, scale.y, scale.z),
+      key.sound,
+      index,
+      key.pitch
+    )
+  })
+}
 
 export function main() {
-  const notes = ['c3', 'd3', 'e3', 'f3', 'g3', 'a3', 'b3']
+  const floorEntity = engine.addEntity();
+  MeshRenderer.setPlane(floorEntity);
+  Transform.create(floorEntity, {
+    position: Vector3.create(16, 0, 8),
+    rotation: Quaternion.fromEulerDegrees(90, 90, 90),
+    scale: Vector3.create(32, 16, 16),
+  });
+  Material.setPbrMaterial(floorEntity, {
+    albedoColor: Color4.Gray()
+  });
 
-  // Base scene
-  const baseScene = engine.addEntity()
-  GltfContainer.create(baseScene, {
-    src: resources.models.baseSceneModel,
-    visibleMeshesCollisionMask: ColliderLayer.CL_PHYSICS
-  })
-
-  // For transforming the piano
-  const scene = engine.addEntity()
-  Transform.create(scene, {
-    position: Vector3.create(8, 0, 8),
-    rotation: Quaternion.fromEulerDegrees(0, 0, 0),
-    scale: Vector3.create(1, 1, 1)
-  })
-
-  // White keys
-  const whiteKeySounds: string[] = [
-    resources.sounds.whiteKeys.c4,
-    resources.sounds.whiteKeys.c4,
-    resources.sounds.whiteKeys.c4,
-    resources.sounds.whiteKeys.c4,
-    resources.sounds.whiteKeys.c4,
-    resources.sounds.whiteKeys.c4,
-    resources.sounds.whiteKeys.c4,
-    resources.sounds.whiteKeys.c4,
-    resources.sounds.whiteKeys.c4,
-    resources.sounds.whiteKeys.c4,
-    resources.sounds.whiteKeys.c4,
-    resources.sounds.whiteKeys.c4,
-    resources.sounds.whiteKeys.c4,
-    resources.sounds.whiteKeys.c4
-  ]
-
-  let whiteKeyXPos = -5.55
-  const audioController = new AudioController()
-  const transpose = 0 // transpose in semitones
-  const whiteKeyPitches = [-12, -10, -8, -7, -5, -3, -1, 0, 2, 4, 5, 7, 9, 11]
-  const blackKeyPitches = [-9, -7, -4, -2, 0, 3, 5, 8, 10, 12];
-
-  function createWhiteKeys() {
-    for (let i = 0; i < whiteKeySounds.length; i++) {
-      new WhitePianoKey(
-        Vector3.create(whiteKeyXPos, 0.11, 0),
-        Vector3.create(0.7, 5, 0.5),
-        whiteKeySounds[i],
-        i,
-        Math.pow(2, (whiteKeyPitches[i] + transpose) / 12),
-        scene
-      )
-      audioController.createAudioEntity(`whiteKeys.${notes[i]}`, false)
-      whiteKeyXPos += 0.8
-    }
-  }
-
-  // Black keys
-  const blackKeySounds: string[] = [
-    resources.sounds.blackKeys.aSharp3,
-    resources.sounds.blackKeys.aSharp3,
-    resources.sounds.blackKeys.aSharp3,
-    resources.sounds.blackKeys.aSharp3,
-    resources.sounds.blackKeys.aSharp3,
-    resources.sounds.blackKeys.aSharp3,
-    resources.sounds.blackKeys.aSharp3,
-    resources.sounds.blackKeys.aSharp3,
-    resources.sounds.blackKeys.aSharp3,
-    resources.sounds.blackKeys.aSharp3
-  ]
-
-  let blackKeyXPos = -5.15
-  let skipKey = 1
-
-  function createBlackKeys() {
-    for (let i = 0; i < blackKeySounds.length; i++) {
-      new BlackPianoKey(
-        Vector3.create(blackKeyXPos, 0.12, 1),
-        Vector3.create(0.5, 3, 10),
-        blackKeySounds[i],
-        i,
-        Math.pow(2, (blackKeyPitches[i] + transpose) / 12),
-        scene
-      )
-      audioController.createAudioEntity(`blackKeys.${notes[i]}`, true)
-      skipKey++
-      skipKey % 3 !== 0 ? (blackKeyXPos += 0.8) : (blackKeyXPos += 1.6)
-      if (skipKey === 6) skipKey = 1
-    }
-  }
-
+  setUpEvents();
   createWhiteKeys()
   createBlackKeys()
-  // utils.triggers.enableDebugDraw(true); // To debug trigger areas
-
-  // UI with GitHub link
-  setupUi()
+  requestKeyStates()
 }
+
+// utils.triggers.enableDebugDraw(true); // To debug trigger areas
+
+// UI with GitHub link
+// setupUi()
+
+
