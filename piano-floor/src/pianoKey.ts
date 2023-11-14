@@ -45,10 +45,12 @@ export class WhitePianoKey {
       position: position,
       scale: scale,
     })
+
     Transform.create(this.audioEntity, {
-      position: position,
-      scale: scale,
+      position: Vector3.create(0,0,0),
+      parent: this.whiteKeyEntity
     })
+
 
     AudioSource.create(this.whiteKeyEntity, {
       audioClipUrl: sound,
@@ -163,8 +165,8 @@ export class BlackPianoKey {
       scale: scale,
     })
     Transform.create(this.audioEntity, {
-      position: position,
-      scale: scale,
+      position: Vector3.create(0,0,0),
+      parent: this.blackKeyEntity
     })
 
 
